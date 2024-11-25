@@ -17,15 +17,13 @@ RNAadata = sc.read_h5ad('./OmniDoublet-main/test/RNA_new.h5ad')
 ATACadata = sc.read_h5ad('./OmniDoublet-main/test/ATAC_new.h5ad')
 modality = "ATAC"
 Omni = omnid.OmniDoublet(RNAadata, ATACadata, modality)
-omnid_res = Omni.core()
-
-
+omnid_res = Omni.core()WW
 ```
 
 #### Input
-RNAadata : RNA adata
-modality_adata : The other modality adata.
-modality : "ATAC" or "ADT" (default : "ATAC")
+* RNAadata : RNA adata
+* modality_adata : The other modality adata.
+* modality : "ATAC" or "ADT" (default : "ATAC")
 
 
 #### Return
