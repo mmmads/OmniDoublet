@@ -17,7 +17,7 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
 
-sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
+sc.settings.verbosity = 0  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.logging.print_header()
 sc.settings.set_figure_params(dpi=80, facecolor="white")
 
@@ -410,9 +410,9 @@ class OmniDoublet ():
         cls = (origin_pred >= threshold).astype(int)
 
         omnid_res = pd.DataFrame({'score':origin_pred, 'class':cls}, index=self.RNAadata.obs.index)
-        omnid_res.to_csv('omnid_res.csv')
+        # omnid_res.to_csv('omnid_res.csv')
 
-        return origin_pred, cls
+        return omnid_res
 
     def _filter(self):
         # print('function : _filter')
