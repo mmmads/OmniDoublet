@@ -1,6 +1,10 @@
 # OmniDoublet
 OmniDoublet : a doublet detection method for multimodal single-cell data
 
+### Requirements
+
+- Python 3.9  
+
 ### Installation
 ```
 git clone https://github.com/mmmads/OmniDoublet
