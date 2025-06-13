@@ -98,7 +98,7 @@ def bootstrap_normalize(combined_profiles, original_profiles, n_bootstrap=100):
 
 # create doublets
 def create_doublets(scData, idx1, idx2, normalized=False):
-    print("scData.X shape : ", scData.X.shape)
+    # print("scData.X shape : ", scData.X.shape)
     doublets = (scData.X[idx1, :] + scData.X[idx2, :])
     if normalized:
         doublets = bootstrap_normalize(doublets, original_profiles=scData.X, n_bootstrap=scData.shape[0])
@@ -336,12 +336,11 @@ class OmniDoublet ():
 
     # core function
     def core(self,):
-        print('function : core')
-        # self._filter()
+        # print('function : core')
+        self._filter()
         # doublet simulation
         # print('Simulating doublets ...')
-        # pre cluster
-        # fast cluster
+        #pre cluster fast cluster
         if self.sim_method != "random":
             clusters = fast_cluster(self.RNAadata)
             self.clusters = clusters
