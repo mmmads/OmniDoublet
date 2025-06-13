@@ -18,6 +18,7 @@ ATACadata = sc.read_h5ad('./OmniDoublet-main/test/ATAC_new.h5ad')
 modality = "ATAC"
 Omni = omnid.OmniDoublet(RNAadata, ATACadata, modality)
 omnid_res = Omni.core()
+omnid_res.to_csv('omnid_res.csv')
 ```
 
 #### Input
