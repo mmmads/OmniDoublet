@@ -6,8 +6,12 @@ import numpy as np
 import scanpy as sc
 import scipy
 import pandas as pd
+import anndata
+import gc
+from sklearn.metrics import f1_score
 
 from annoy import AnnoyIndex
+from scipy.stats import gaussian_kde
 # from sklearn.decomposition import PCA, TruncatedSVD
 # from sklearn.neighbors import NearestNeighbors
 from scipy.sparse import issparse, isspmatrix_csc, vstack, csc_matrix
@@ -94,6 +98,7 @@ def bootstrap_normalize(combined_profiles, original_profiles, n_bootstrap=100):
 
 # create doublets
 def create_doublets(scData, idx1, idx2, normalized=False):
+    print("scData.X shape : ", scData.X.shape)
     doublets = (scData.X[idx1, :] + scData.X[idx2, :])
     if normalized:
         doublets = bootstrap_normalize(doublets, original_profiles=scData.X, n_bootstrap=scData.shape[0])
@@ -224,7 +229,7 @@ def get_annoy_graph(data, k, n_tree, dist_metric='euclidean', rseed=123):
     knn = []
     distance = []
     for i in range(n_samples):
-        # 去除自身的knn
+        # Exclude the item itself from its knn
         neighbors = annoy_index.get_nns_by_item(i, k+1)[1:]
         knn.append(neighbors)
         # get distances
@@ -293,7 +298,7 @@ def min_max_normalize(scores):
 class OmniDoublet ():
     def __init__(self, RNAadata, modality_adata, modality = 'ATAC', min_cells=None, target_sum=1e4, ntg=2000, n_nbs=None, n_pcs=40,
                  min_dist=0.4, pct_top_idf=0.2, rseed=123, sim_ratio=0.3, normalized=False, sim_method='random',
-                 dist_metric='euclidean', n_tree=10):
+                 dist_metric='euclidean', n_tree=10, confi_threshold=0.5, posterior=False):
         # print('function : __init__')
 
         # inistialize parameters
@@ -301,6 +306,7 @@ class OmniDoublet ():
         self.modality_adata = modality_adata
         self.modality = modality
         self.num_cells = RNAadata.shape[0]
+        self.posterior = posterior
 
         if min_cells is None:
             min_cells = round(self.num_cells * 0.01)
@@ -325,16 +331,17 @@ class OmniDoublet ():
         self.sim_method = sim_method
         self.n_tree = n_tree
         self.dist_metric = dist_metric
+        self.confi_threshold = confi_threshold
 
 
     # core function
     def core(self,):
-        # print('function : core')
-        self._filter()
+        print('function : core')
+        # self._filter()
         # doublet simulation
         # print('Simulating doublets ...')
-        # 需要进行预分类
-        # 执行一下快速分类
+        # pre cluster
+        # fast cluster
         if self.sim_method != "random":
             clusters = fast_cluster(self.RNAadata)
             self.clusters = clusters
@@ -348,21 +355,14 @@ class OmniDoublet ():
         init_labels =  np.array([0] * self.num_cells + [1] * RNA_simD.shape[0])
 
         # data preprocess & dim reduction
-        # 得到降维后的特征 然后做knn打分
-        # 分别计算单模态的doublet score 然后jaccard模态加权
-        # 获得降维特征
-        RNA_all = sc.AnnData(X=RNA_all)
-        RNA_all = RNA_pp(RNA_all)
-        RNA_embeds = RNA_all.obsm['X_pca']
-        modality_all = sc.AnnData(X=modality_all)
-        if self.modality == 'ATAC':
-            modality_all = ATAC_pp(modality_all)
-            modality_embeds = modality_all.obsm['lsi']
-        elif self.modality == 'ADT':
-            modality_norm = ADT_pp(modality_all)
-            modality_embeds = modality_norm.values
+        # get dimension-reduced features and perform kNN scoring
+        # compute doublet scores for each modality separately, then apply Jaccard-based modality weighting
+        
+        # get dimension-reduced features
+        RNA_embeds = RNA_all
+        modality_embeds = modality_all
 
-        # 计算图
+        # compute knn graph
         RNA_knn, RNA_dist = get_annoy_graph(RNA_embeds, k=self.n_nbs, n_tree=self.n_tree,
                                             dist_metric=self.dist_metric, rseed=self.rseed)
 
@@ -371,11 +371,10 @@ class OmniDoublet ():
 
         jac_coef = calculate_jaccard_coef(RNA_knn, modality_knn)
 
-        # 邻居得分矩阵
+        # neighbor score matrix
         RNA_knn_scores = np.zeros_like(RNA_knn)
         modality_knn_scores = np.zeros_like(modality_knn)
 
-        # knn中每个点的jac-coef也可以作为权重
         RNA_knn_jac = np.zeros_like(RNA_knn, dtype=float)
         modality_knn_jac = np.zeros_like(modality_knn, dtype=float)
         for i in range(RNA_knn.shape[0]):
@@ -387,35 +386,44 @@ class OmniDoublet ():
             modality_knn_scores[i] = init_labels[neighbor_indices]
             modality_knn_jac[i] = jac_coef[neighbor_indices]
 
-        # 把距离array转成权重array  发现还是自己的normalize方法结果会更好一线
+        # normalize distance to weight
         RNA_knn_weights = normalize_distance(RNA_dist)
         modality_knn_weights = normalize_distance(modality_dist)
         # RNA_knn_weights = min_max_normalize(RNA_dist)
         # modality_knn_weights = min_max_normalize(modality_dist)
 
-        # 两个权重矩阵*乘（对应位置相乘） 得到新的权重矩阵  [N,K]
+        # element-wise multiply  [N,K]
         RNA_weights = RNA_knn_jac * RNA_knn_weights
         modality_weights = modality_knn_jac * modality_knn_weights
 
-        # 最终相加加权得分
-        # [N, K] * [N, K] 然后每行求和 得到[N]个得分
+        # final score by weighted sum
         final_score = (RNA_weights * RNA_knn_scores + modality_weights * modality_knn_scores).sum(axis=1)
 
         # normalization
         final_score = min_max_normalize(final_score)
 
-        # calculate threshold
-        threshold = calculate_cutoff(final_score, rseed=self.rseed)
-        origin_pred = final_score[:self.num_cells]
+
+        # threshold calcluation
+        threshold, _, _ = auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=init_labels, n_init=5, rseed=self.rseed)
         cls = (origin_pred >= threshold).astype(int)
 
         omnid_res = pd.DataFrame({'score':origin_pred, 'class':cls}, index=self.RNAadata.obs.index)
+
+        if self.posterior:
+            # calculate posterior probabilities
+            doublet_probs, labels, _ = calculate_posterior_probabilities(final_score, gmm, confidence_threshold=self.confi_threshold)
+            doublet_probs1 = doublet_probs[:self.num_cells]
+            labels1 = labels[:self.num_cells]
+
+            omnid_res['posterior_prob'] = doublet_probs1
+            omnid_res['posterior_label'] = labels1
+
         # omnid_res.to_csv('omnid_res.csv')
 
         return omnid_res
 
     def _filter(self):
-        # print('function : _filter')
+        # print('function : )_filter'
         self.RNAadata.var_names_make_unique()
         self.modality_adata.var_names_make_unique()
         sc.pp.filter_genes(self.RNAadata, min_cells=self.min_cells)
@@ -434,7 +442,6 @@ class OmniDoublet ():
 
     def simulate_doublets(self,):
         # print('function : simulate_doublets')
-        # 先要随机选取两组index 然后分别构建RNA_sim_doublets和ATAC_sim_doublets
         idx1, idx2 = gen_index(origin_num=self.RNAadata.shape[0], rseed=self.rseed,
                                sim_ratio=self.sim_ratio, method=self.sim_method, clusters=self.clusters)
         # simulate RNA & ATAC doublets
@@ -445,10 +452,11 @@ class OmniDoublet ():
 
         return RNA_simD, modality_simD
 
-# 计算区分singlet和doublet的cutoff
+# singlet-doublet cutoff
 def calculate_cutoff(scores, rseed=123):
     # fit gmm
     gmm = GaussianMixture(n_components=2, random_state=rseed)
+    # gmm = CustomGMM(n_components=2)
     gmm.fit(scores.reshape(-1,1))
     scores_sorted = np.sort(scores)
     prob = gmm.predict_proba(scores_sorted.reshape(-1, 1))
@@ -456,99 +464,93 @@ def calculate_cutoff(scores, rseed=123):
     cutoff_idx = np.where(np.diff(np.argmax(prob, axis=1)))[0][0]
     cutoff_score = scores_sorted[cutoff_idx]
 
-    return cutoff_score
+    return cutoff_score, gmm
 
 
-# 特定的高斯混合模型 truncated gaussian
-class RightSidedGaussian:
-    def __init__(self, mean=0, std=1):
-        self.mean = mean
-        self.std = std
+def calculate_posterior_probabilities(scores, gmm, confidence_threshold=0.5):
+    '''
+    given GMM compute the posterior probability of each droplet being a doublet
+    '''
+    means = gmm.means_.flatten()
+    doublet_component = np.argmax(means) # return the index of the distribution with the larger mean
 
-    def pdf(self, x):
-        pdf_values = np.where(x >= 0, norm.pdf(x, self.mean, self.std), 0)
-        return pdf_values
+    probs = gmm.predict_proba(scores.reshape(-1,1))
+    doublet_probs = probs[:, doublet_component]
 
-    def fit(self, x, sample_weight=None):
-        right_side_values = x[x >= 0]
-        if sample_weight is not None:
-            sample_weight = sample_weight[x >= 0]
-            self.mean = np.average(right_side_values, weights=sample_weight)
-            self.std = np.sqrt(np.average((right_side_values - self.mean) ** 2, weights=sample_weight))
-        else:
-            self.mean = np.mean(right_side_values)
-            self.std = np.std(right_side_values)
+    # assign labels
+    labels = (doublet_probs > confidence_threshold).astype(int)
 
-class CustomGMM:
-    def __init__(self, n_components=2, max_iter=100, tol=1e-3):
-        self.n_components = n_components
-        self.max_iter = max_iter
-        self.tol = tol
-        self.weights_ = None
-        self.means_ = None
-        self.covariances_ = None
+    return doublet_probs, labels, probs
 
-    def fit(self, X):
-        n_samples = X.shape[0]
+def semi_supervised_gmm_cutoff(real_scores, sim_scores, n_init=5, rseed=123):
+    all_scores = np.concatenate([real_scores, sim_scores])
+    labels = np.concatenate([np.zeros_like(real_scores), np.ones_like(sim_scores)])
+    # 强制初始化
+    means_init = np.array([[np.mean(real_scores)], [np.mean(sim_scores)]])
+    weights_init = np.array([len(real_scores) / len(all_scores), len(sim_scores)/len(all_scores)])
+    gmm = GaussianMixture(n_components=2, means_init= means_init, weights_init = weights_init, 
+                          random_state=rseed, n_init=n_init)
+    gmm.fit(all_scores.reshape(-1,1))
 
-        # Initializing the GMM parameters
-        gmm = GaussianMixture(n_components=self.n_components, max_iter=self.max_iter, tol=self.tol)
-        gmm.fit(X)
+    if gmm.means_[0] > gmm.means_[1]:
+        doublet_component = 0
+        singlet_component = 1
+    else:
+        doublet_component = 1
+        singlet_component = 0
 
-        self.weights_ = gmm.weights_
-        self.means_ = gmm.means_
-        self.covariances_ = gmm.covariances_
+    assert np.mean(sim_scores) > np.mean(real_scores), "Expect doublet scores > singlet scores"
+    assert gmm.means_[doublet_component] > gmm.means_[singlet_component], "GMM learned opposite mapping!"
 
-        # Initialize the right-sided Gaussian
-        right_sided_gaussian = RightSidedGaussian()
-        right_sided_gaussian.fit(X)
 
-        for iteration in range(self.max_iter):
-            # Expectation Step
-            responsibilities = np.zeros((n_samples, self.n_components))
-            for i in range(self.n_components):
-                if i == 1:  # Assuming component 1 is the right-sided Gaussian
-                    responsibilities[:, i] = self.weights_[i] * right_sided_gaussian.pdf(X.flatten())
-                else:
-                    responsibilities[:, i] = self.weights_[i] * norm.pdf(X.flatten(), self.means_[i], np.sqrt(self.covariances_[i]))
+    scores_sorted = np.sort(all_scores)
+    probs = gmm.predict_proba(scores_sorted.reshape(-1, 1))
 
-            responsibilities /= responsibilities.sum(axis=1, keepdims=True)
+    cutoff_idx = np.where(np.diff(np.argmax(probs , axis=1)))[0][0]
+    cutoff_score = scores_sorted[cutoff_idx]
 
-            # Maximization Step
-            effective_n = responsibilities.sum(axis=0)
-            self.weights_ = effective_n / n_samples
+    return cutoff_score, gmm
 
-            for i in range(self.n_components):
-                if i == 0:
-                    self.means_[i] = 0  # Fix the mean of the first component to 0
-                elif i == 1:
-                    right_sided_gaussian.fit(X.flatten(), sample_weight=responsibilities[:, i])
-                    self.means_[i] = right_sided_gaussian.mean
-                    self.covariances_[i] = right_sided_gaussian.std ** 2
-                else:
-                    self.means_[i] = (responsibilities[:, i] * X.flatten()).sum() / effective_n[i]
-                    self.covariances_[i] = ((responsibilities[:, i] * (X.flatten() - self.means_[i])**2).sum() / effective_n[i])
+def auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=None, n_init=5, rseed=123):
+    all_scores = np.concatenate([real_scores, sim_scores])
+    initial_labels = np.concatenate([np.zeros_like(real_scores), np.ones_like(sim_scores)])
 
-            # Check for convergence
-            if np.allclose(self.weights_, gmm.weights_, atol=self.tol) and \
-               np.allclose(self.means_, gmm.means_, atol=self.tol) and \
-               np.allclose(self.covariances_, gmm.covariances_, atol=self.tol):
-                break
+    means_init = np.array([[np.mean(real_scores)], [np.mean(sim_scores)]])
+    weights_init = np.array([len(real_scores) / len(all_scores), len(sim_scores) / len(all_scores)])
 
-    def predict_proba(self, X):
-        n_samples = X.shape[0]
-        responsibilities = np.zeros((n_samples, self.n_components))
+    # 拟合 GMM
+    gmm = GaussianMixture(n_components=2, means_init=means_init, weights_init=weights_init, random_state=rseed, n_init=n_init)
+    gmm.fit(all_scores.reshape(-1, 1))
 
-        right_sided_gaussian = RightSidedGaussian(self.means_[1], np.sqrt(self.covariances_[1]))
+    if gmm.means_[0] > gmm.means_[1]:
+        doublet_component = 0
+        singlet_component = 1
+    else:
+        doublet_component = 1
+        singlet_component = 0
 
-        for i in range(self.n_components):
-            if i == 1:
-                responsibilities[:, i] = self.weights_[i] * right_sided_gaussian.pdf(X.flatten())
-            else:
-                responsibilities[:, i] = self.weights_[i] * norm.pdf(X.flatten(), self.means_[i], np.sqrt(self.covariances_[i]))
+    scores_sorted = np.sort(all_scores)
+    probs = gmm.predict_proba(scores_sorted.reshape(-1, 1))
 
-        responsibilities /= responsibilities.sum(axis=1, keepdims=True)
-        return responsibilities
+    cutoff_idx = np.where(np.diff(np.argmax(probs , axis=1)))[0][0]
+    cutoff_gmm = scores_sorted[cutoff_idx]
 
-    def predict(self, X):
-        return np.argmax(self.predict_proba(X), axis=1)
+    if true_labels is None:
+        return cutoff_gmm, 'GMM', gmm
+
+    best_cutoff = cutoff_gmm
+    best_f1 = -1
+    for thresh in np.linspace(0, 1, 200):
+        preds = (all_scores > thresh).astype(int)
+        f1 = f1_score(true_labels, preds)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_cutoff = thresh
+
+    preds_gmm = (all_scores > cutoff_gmm).astype(int)
+    f1_gmm = f1_score(true_labels, preds_gmm)
+
+    if best_f1 > f1_gmm:
+        return best_cutoff, 'F1_opt', gmm
+    else:
+        return cutoff_gmm, 'GMM', gmm
