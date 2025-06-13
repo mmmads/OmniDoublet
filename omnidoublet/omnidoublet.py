@@ -485,7 +485,7 @@ def calculate_posterior_probabilities(scores, gmm, confidence_threshold=0.5):
 def semi_supervised_gmm_cutoff(real_scores, sim_scores, n_init=5, rseed=123):
     all_scores = np.concatenate([real_scores, sim_scores])
     labels = np.concatenate([np.zeros_like(real_scores), np.ones_like(sim_scores)])
-    # 强制初始化
+
     means_init = np.array([[np.mean(real_scores)], [np.mean(sim_scores)]])
     weights_init = np.array([len(real_scores) / len(all_scores), len(sim_scores)/len(all_scores)])
     gmm = GaussianMixture(n_components=2, means_init= means_init, weights_init = weights_init, 
