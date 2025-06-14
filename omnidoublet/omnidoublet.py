@@ -413,7 +413,7 @@ class OmniDoublet ():
         # threshold calcluation
         real_scores = final_score[:self.num_cells]
         sim_scores = final_score[self.num_cells:]
-        threshold, _, _ = auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=init_labels, n_init=5, rseed=self.rseed)
+        threshold, _, gmm = auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=init_labels, n_init=5, rseed=self.rseed)
         cls = (real_scores >= threshold).astype(int)
 
         omnid_res = pd.DataFrame({'score':real_scores, 'class':cls}, index=self.RNAadata.obs.index)
