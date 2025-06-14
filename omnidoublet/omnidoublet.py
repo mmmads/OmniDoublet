@@ -409,13 +409,14 @@ class OmniDoublet ():
         # normalization
         final_score = min_max_normalize(final_score)
 
+
         # threshold calcluation
         real_scores = final_score[:self.num_cells]
         sim_scores = final_score[self.num_cells:]
         threshold, _, _ = auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=init_labels, n_init=5, rseed=self.rseed)
-        cls = (origin_pred >= threshold).astype(int)
+        cls = (real_scores >= threshold).astype(int)
 
-        omnid_res = pd.DataFrame({'score':origin_pred, 'class':cls}, index=self.RNAadata.obs.index)
+        omnid_res = pd.DataFrame({'score':real_scores, 'class':cls}, index=self.RNAadata.obs.index)
 
         if self.posterior:
             # calculate posterior probabilities
