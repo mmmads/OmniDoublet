@@ -358,8 +358,16 @@ class OmniDoublet ():
         # compute doublet scores for each modality separately, then apply Jaccard-based modality weighting
         
         # get dimension-reduced features
-        RNA_embeds = RNA_all
-        modality_embeds = modality_all
+        RNA_all = sc.AnnData(X=RNA_all)
+        RNA_all = RNA_pp(RNA_all)
+        RNA_embeds = RNA_all.obsm['X_pca']
+        modality_all = sc.AnnData(X=modality_all)
+        if self.modality == 'ATAC':
+            modality_all = ATAC_pp(modality_all)
+            modality_embeds = modality_all.obsm['lsi']
+        elif self.modality == 'ADT':
+            modality_norm = ADT_pp(modality_all)
+            modality_embeds = modality_norm.values
 
         # compute knn graph
         RNA_knn, RNA_dist = get_annoy_graph(RNA_embeds, k=self.n_nbs, n_tree=self.n_tree,
