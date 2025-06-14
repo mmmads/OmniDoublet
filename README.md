@@ -31,7 +31,8 @@ omnid_res.to_csv('omnid_res.csv')
 * RNAadata : RNA adata
 * modality_adata : The other modality adata.
 * modality : "ATAC" or "ADT" (default : "ATAC")
-
+* posterior (optional) : Whether to return the posterior probability of each cell being a doublet. (default : False)
+* confi_threshold (optional) : Threshold on the posterior probability for classifying a cell as a doublet. (default : 0.5)
 
 #### Return
 OmniDoublet returns a pandas dataframe with two columns, column `score` is the predicted doublet score, while column `class` is the predicted label.
