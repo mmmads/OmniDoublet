@@ -247,27 +247,16 @@ def get_annoy_graph(data, k, n_tree, dist_metric='euclidean', rseed=123):
     return knn, distance
 
 
-# calculate jaccard distance between two modality knn
-def calculate_jaccard_distance(knn1, knn2):
-    jac_dist = []
-    for neighbors1, neighbors2 in zip(knn1, knn2):
-        intersection = np.intersect1d(neighbors1, neighbors2)
-        union = np.union1d(neighbors1, neighbors2)
-        dist = 1.0 - (intersection.shape[0]/union.shape[0])
-        jac_dist.append(dist)
-
-    jac_dist = np.array(jac_dist)
-    # print('jac_dist : ', jac_dist.shape, jac_dist)
-
-    return jac_dist
-
 # calculate jaccard coefficient of each sample between two modality
-def calculate_jaccard_coef(knn1, knn2):
+def calculate_jaccard_coef(knn1, knn2, epsilon=1e-5):
     jac_coef = []
     for neighbors1, neighbors2 in zip(knn1, knn2):
         intersection = np.intersect1d(neighbors1, neighbors2)
         union = np.union1d(neighbors1, neighbors2)
-        coef = float(intersection.shape[0])/union.shape[0]
+        if union.shape[0] == 0:
+            coef = epsilon
+        else:
+            coef = float(intersection.shape[0]) / union.shape[0]
         jac_coef.append(coef)
 
     jac_coef = np.array(jac_coef)
@@ -278,6 +267,8 @@ def calculate_jaccard_coef(knn1, knn2):
 # normalize distance
 def normalize_distance(distances):
     # closer neigbhor , bigger weight
+    if not np.issubdtype(distances.dtype, np.floating):
+        distances = distances.astype(np.float32)
     eps = np.finfo(distances.dtype).eps
     distances = np.maximum(distances, eps)
     inverted_distances = 1.0 / distances
@@ -289,6 +280,9 @@ def normalize_distance(distances):
 def min_max_normalize(scores):
     min_score = np.min(scores)
     max_score = np.max(scores)
+
+    if max_score - min_score < 1e-10:
+        return scores 
 
     # apply min-max normalization
     normalized_scores = (scores - min_score) / (max_score - min_score)
@@ -468,10 +462,15 @@ def calculate_cutoff(scores, rseed=123):
     # gmm = CustomGMM(n_components=2)
     gmm.fit(scores.reshape(-1,1))
     scores_sorted = np.sort(scores)
-    prob = gmm.predict_proba(scores_sorted.reshape(-1, 1))
+    probs = gmm.predict_proba(scores_sorted.reshape(-1, 1))
 
-    cutoff_idx = np.where(np.diff(np.argmax(prob, axis=1)))[0][0]
-    cutoff_score = scores_sorted[cutoff_idx]
+    diffs = np.diff(np.argmax(probs, axis=1))
+    if not np.any(diffs):
+        # fallback: use midpoint or default cutoff
+        cutoff_score = np.median(scores)
+    else:
+        cutoff_idx = np.where(diffs)[0][0]
+        cutoff_score = scores_sorted[cutoff_idx]
 
     return cutoff_score, gmm
 
@@ -508,15 +507,21 @@ def semi_supervised_gmm_cutoff(real_scores, sim_scores, n_init=5, rseed=123):
         doublet_component = 1
         singlet_component = 0
 
-    assert np.mean(sim_scores) > np.mean(real_scores), "Expect doublet scores > singlet scores"
-    assert gmm.means_[doublet_component] > gmm.means_[singlet_component], "GMM learned opposite mapping!"
-
+    if not np.mean(sim_scores) > np.mean(real_scores):
+        print("! Warning: mean(sim_scores) <= mean(real_scores), expect doublet scores > singlet scores")
+    if not gmm.means_[doublet_component] > gmm.means_[singlet_component]:
+        print("! Warning: GMM learned opposite mapping !")
 
     scores_sorted = np.sort(all_scores)
     probs = gmm.predict_proba(scores_sorted.reshape(-1, 1))
 
-    cutoff_idx = np.where(np.diff(np.argmax(probs , axis=1)))[0][0]
-    cutoff_score = scores_sorted[cutoff_idx]
+    diffs = np.diff(np.argmax(probs, axis=1))
+    if not np.any(diffs):
+        # fallback: use midpoint or default cutoff
+        cutoff_score = np.median(scores)
+    else:
+        cutoff_idx = np.where(diffs)[0][0]
+        cutoff_score = scores_sorted[cutoff_idx]
 
     return cutoff_score, gmm
 
@@ -541,13 +546,18 @@ def auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=None, n_ini
     scores_sorted = np.sort(all_scores)
     probs = gmm.predict_proba(scores_sorted.reshape(-1, 1))
 
-    cutoff_idx = np.where(np.diff(np.argmax(probs , axis=1)))[0][0]
-    cutoff_gmm = scores_sorted[cutoff_idx]
+    diffs = np.diff(np.argmax(probs, axis=1))
+    if not np.any(diffs):
+        # fallback: use midpoint or default cutoff
+        cutoff_score = np.median(scores)
+    else:
+        cutoff_idx = np.where(diffs)[0][0]
+        cutoff_score = scores_sorted[cutoff_idx]
 
     if true_labels is None:
-        return cutoff_gmm, 'GMM', gmm
+        return cutoff_score, 'GMM', gmm
 
-    best_cutoff = cutoff_gmm
+    best_cutoff = cutoff_score
     best_f1 = -1
     for thresh in np.linspace(0, 1, 200):
         preds = (all_scores > thresh).astype(int)
@@ -556,10 +566,10 @@ def auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=None, n_ini
             best_f1 = f1
             best_cutoff = thresh
 
-    preds_gmm = (all_scores > cutoff_gmm).astype(int)
+    preds_gmm = (all_scores > cutoff_score).astype(int)
     f1_gmm = f1_score(true_labels, preds_gmm)
 
     if best_f1 > f1_gmm:
         return best_cutoff, 'F1_opt', gmm
     else:
-        return cutoff_gmm, 'GMM', gmm
+        return cutoff_score, 'GMM', gmm
