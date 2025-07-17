@@ -15,6 +15,7 @@ git clone https://github.com/mmmads/OmniDoublet
 cd OmniDoublet
 pip install -r requirements.txt
 python setup.py install
+```
 
 #### Python 3.10 - 3.13
 
@@ -23,7 +24,7 @@ pip install anndata annoy h5py numpy pandas scanpy scikit-learn
 git clone https://github.com/mmmads/OmniDoublet
 cd OmniDoublet
 python setup.py install
-
+```
 
 ### Quick Start
 ```
