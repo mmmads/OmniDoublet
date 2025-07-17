@@ -22,8 +22,8 @@ from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
 
 sc.settings.verbosity = 0  # verbosity: errors (0), warnings (1), info (2), hints (3)
-sc.logging.print_header()
-sc.settings.set_figure_params(dpi=80, facecolor="white")
+# sc.logging.print_header()
+# sc.settings.set_figure_params(dpi=80, facecolor="white")
 
 # generate doublet parents index
 def gen_index(origin_num, rseed=123, sim_ratio=0.3, method='random', clusters=None):
