@@ -3,25 +3,13 @@ OmniDoublet : a doublet detection method for multimodal single-cell data
 
 ### Requirements
 
-- Recommended: Python 3.9  
-- Also tested with Python 3.10 - 3.13
+- Python 3.9 – 3.13
 
 ### Installation
-
-#### Python 3.9
-
 ```bash
 git clone https://github.com/mmmads/OmniDoublet
 cd OmniDoublet
-pip install -r requirements.txt
-pip install .
-```
-
-#### Python 3.10 - 3.13
-
-```bash
-git clone https://github.com/mmmads/OmniDoublet
-cd OmniDoublet
+pip install -r requirements.txt   # for Python 3.9
 pip install -r requirements310.txt    # for Python 3.10
 pip install -r requirements311.txt    # for Python 3.11
 pip install -r requirements312.txt    # for Python 3.12
