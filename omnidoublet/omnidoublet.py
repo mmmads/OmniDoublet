@@ -241,7 +241,7 @@ def get_annoy_graph(data, k, n_tree, dist_metric='euclidean', rseed=123):
     # print('knn : ', type(knn))
     # print('distance : ', type(distance))
 
-    knn = np.array(knn)
+    knn = np.array(knn, dtype=int)
     distance = np.array(distance)
 
     return knn, distance
@@ -378,12 +378,18 @@ class OmniDoublet ():
 
         RNA_knn_jac = np.zeros_like(RNA_knn, dtype=float)
         modality_knn_jac = np.zeros_like(modality_knn, dtype=float)
+        # print('----------test: ', RNA_knn.dtype, RNA_knn[0][:10])
+        # print('----------test: ', modality_knn.dtype, modality_knn[0][:10])
         for i in range(RNA_knn.shape[0]):
             neighbor_indices = RNA_knn[i]
+            if neighbor_indices.dtype != int:
+                neighbor_indices = neighbor_indices.astype(int)
             RNA_knn_scores[i] = init_labels[neighbor_indices]
             RNA_knn_jac[i] = jac_coef[neighbor_indices]
         for i in range(modality_knn.shape[0]):
             neighbor_indices = modality_knn[i]
+            if neighbor_indices.dtype != int:
+                neighbor_indices = neighbor_indices.astype(int)
             modality_knn_scores[i] = init_labels[neighbor_indices]
             modality_knn_jac[i] = jac_coef[neighbor_indices]
 
