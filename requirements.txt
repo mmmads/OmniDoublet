@@ -14,7 +14,6 @@ natsort==8.4.0
 networkx==3.2.1
 numba==0.60.0
 numpy==1.24.4
-OmniDoublet==1.0.0
 packaging==25.0
 pandas==2.0.3
 patsy==1.0.1
