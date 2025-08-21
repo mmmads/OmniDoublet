@@ -14,7 +14,7 @@ OmniDoublet : a doublet detection method for multimodal single-cell data
 git clone https://github.com/mmmads/OmniDoublet
 cd OmniDoublet
 pip install -r requirements.txt
-python setup.py install
+pip install .
 ```
 
 #### Python 3.10 - 3.13
@@ -26,7 +26,7 @@ pip install -r requirements310.txt    # for Python 3.10
 pip install -r requirements311.txt    # for Python 3.11
 pip install -r requirements312.txt    # for Python 3.12
 pip install -r requirements313.txt    # for Python 3.13
-python setup.py install
+pip install .
 ```
 
 ### Quick Start
