@@ -242,7 +242,7 @@ def get_annoy_graph(data, k, n_tree, dist_metric='euclidean', rseed=123):
     # print('distance : ', type(distance))
 
     knn = np.array(knn, dtype=int)
-    distance = np.array(distance)
+    distance = np.array(distance, dtype=float)
 
     return knn, distance
 
