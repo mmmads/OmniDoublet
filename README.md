@@ -4,7 +4,7 @@ OmniDoublet : a doublet detection method for multimodal single-cell data
 ### Requirements
 
 - Python 3.9, 3.10, 3.11, 3.13
-(Python 3.12 is currently not supported due to dependency incompatibilities causing segmentation faults.)
+(Python 3.12 is currently not supported due to dependency incompatibilities.)
 
 ### Installation
 ```bash
