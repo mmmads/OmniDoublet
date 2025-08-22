@@ -20,6 +20,11 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
 
+SEED = 123  # 可根据需要修改
+random.seed(SEED)
+np.random.seed(SEED)
+os.environ['PYTHONHASHSEED'] = str(SEED)
+
 sc.settings.verbosity = 0  # verbosity: errors (0), warnings (1), info (2), hints (3)
 # sc.logging.print_header()
 # sc.settings.set_figure_params(dpi=80, facecolor="white")
