@@ -7,7 +7,6 @@ import scanpy as sc
 import scipy
 import pandas as pd
 import anndata
-import gc
 from sklearn.metrics import f1_score
 
 from annoy import AnnoyIndex
@@ -80,6 +79,8 @@ def bootstrap_normalize(combined_profiles, original_profiles, n_bootstrap=100):
     else:
         combined_library_sizes = np.sum(combined_profiles, axis=1).reshape(-1)
     # print('combind_library_sizes : ', combined_library_sizes.shape, combined_library_sizes)
+
+    combined_library_sizes = np.maximum(combined_library_sizes, 1e-8)
 
     scale_factor = sampled_library_sizes/combined_library_sizes
     # print('scale_factor :', scale_factor.shape, scale_factor)
@@ -248,7 +249,7 @@ def get_annoy_graph(data, k, n_tree, dist_metric='euclidean', rseed=123):
 
 
 # calculate jaccard coefficient of each sample between two modality
-def calculate_jaccard_coef(knn1, knn2, epsilon=1e-5):
+def calculate_jaccard_coef(knn1, knn2, epsilon=1e-8):
     jac_coef = []
     for neighbors1, neighbors2 in zip(knn1, knn2):
         intersection = np.intersect1d(neighbors1, neighbors2)
@@ -513,6 +514,9 @@ def semi_supervised_gmm_cutoff(real_scores, sim_scores, n_init=5, rseed=123):
         doublet_component = 1
         singlet_component = 0
 
+    if len(real_scores) == 0 or len(sim_scores) == 0:
+        raise ValueError("real_scores or sim_scores is empty, cannot fit GMM.")
+
     if not np.mean(sim_scores) > np.mean(real_scores):
         print("! Warning: mean(sim_scores) <= mean(real_scores), expect doublet scores > singlet scores")
     if not gmm.means_[doublet_component] > gmm.means_[singlet_component]:
@@ -555,7 +559,7 @@ def auto_semi_supervised_cutoff(real_scores, sim_scores, true_labels=None, n_ini
     diffs = np.diff(np.argmax(probs, axis=1))
     if not np.any(diffs):
         # fallback: use midpoint or default cutoff
-        cutoff_score = np.median(scores)
+        cutoff_score = np.median(all_scores)
     else:
         cutoff_idx = np.where(diffs)[0][0]
         cutoff_score = scores_sorted[cutoff_idx]
