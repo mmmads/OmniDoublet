@@ -20,7 +20,7 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
 
-SEED = 123  # 可根据需要修改
+SEED = 123  
 random.seed(SEED)
 np.random.seed(SEED)
 os.environ['PYTHONHASHSEED'] = str(SEED)
