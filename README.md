@@ -39,4 +39,11 @@ omnid_res.to_csv('omnid_res.csv')
 * confi_threshold (optional) : Threshold on the posterior probability for classifying a cell as a doublet. (default : 0.5)
 
 #### Return
-OmniDoublet returns a pandas dataframe with two columns, column `score` is the predicted doublet score, while column `class` is the predicted label.
+OmniDoublet returns a pandas dataframe:
+* score: The predicted continuous doublet score (Primary metric for classification).
+* class: The predicted label (1 for doublet, 0 for singlet).
+* posterior_prob (Optional): GMM posterior probability, provided only as a reference metric.
+
+Note on Classification:
+OmniDoublet classifies cells (`class`) based on their continuous score, not a hard cutoff on posterior_prob.
+
